@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
+
+#pylint:disable=E1101
 import lxbuildenv
-LX_DEPENDENCIES = "vivado"
+LX_DEPENDENCIES = ["vivado", "riscv"]
 
 import argparse
 import os
 
-from migen import *
+from migen import ClockDomain, Signal, Instance, Module, ClockSignal, If
 from migen.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.boards.platforms import arty, arty_s7
 
 from litex.soc.integration.soc_core import mem_decoder
-from litex.soc.integration.soc_sdram import *
+from litex.soc.integration.soc_sdram import SoCSDRAM
 from litex.soc.cores import spi_flash
-from litex.soc.integration.builder import *
-from litex.soc.cores.uart import *
-from litex.soc.interconnect.stream import *
+from litex.soc.integration.builder import builder_args, Builder
+from litex.soc.cores.uart import RS232PHYMultiplexer, RS232PHY, WishboneStreamingBridge, RS232PHYInterface, UART
 
 from litedram.modules import MT41K128M16
 from litedram.phy import a7ddrphy
@@ -27,7 +28,11 @@ from liteeth.phy import LiteEthPHY
 from liteeth.core.mac import LiteEthMAC
 
 from litex.soc.cores import dna, xadc
-#from gateware import led
+
+from liteeth.common import convert_ip
+from liteeth.phy.mii import LiteEthPHYMII
+from liteeth.core import LiteEthUDPIPCore
+from liteeth.frontend.etherbone import LiteEthEtherbone
 
 
 def csr_map_update(csr_map, csr_peripherals):
@@ -105,6 +110,8 @@ class CRG(Module):
             )
         self.specials += Instance("IDELAYCTRL", i_REFCLK=ClockSignal("clk200"), i_RST=ic_reset)
 
+        # For Arty, this is required in order to get a clock generated.  Otherwise,
+        # there will be no carrier.
         if platform.device[:4] == "xc7a":
             eth_clk = Signal()
             self.specials += [
@@ -247,40 +254,6 @@ class MiniSoC(BaseSoC):
             self.add_constant(s, e)
 
 
-# def main():
-#     parser = argparse.ArgumentParser(description="Arty LiteX SoC")
-#     builder_args(parser)
-#     soc_sdram_args(parser)
-#     parser.add_argument("--s7", action="store_true",
-#                         help="Create SoC for Arty S7 (No Ethernet)")
-#     parser.add_argument("--with-ethernet", action="store_true",
-#                         help="enable Ethernet support")
-#     parser.add_argument("--nocompile-gateware", action="store_true")
-#     args = parser.parse_args()
-
-#     platform = arty_s7.Platform() if args.s7 else arty.Platform()
-#     cls = MiniSoC if (args.with_ethernet and not args.s7) else BaseSoC
-#     soc = cls(platform, **soc_sdram_argdict(args))
-#     builder = Builder(soc, output_dir="build",
-#                       compile_gateware=not args.nocompile_gateware,
-#                       csr_csv="test/csr.csv")
-#     vns = builder.build()
-
-# if __name__ == "__main__":
-#     main()
-
-# #!/usr/bin/env python3
-
-# from arty_base import *
-
-from litex.soc.integration.soc_core import *
-
-from liteeth.common import convert_ip
-from liteeth.phy.mii import LiteEthPHYMII
-from liteeth.core import LiteEthUDPIPCore
-from liteeth.frontend.etherbone import LiteEthEtherbone
-
-
 class EtherboneSoC(BaseSoC):
     csr_peripherals = [
         "ethphy",
@@ -288,8 +261,8 @@ class EtherboneSoC(BaseSoC):
     ]
     csr_map_update(BaseSoC.csr_map, csr_peripherals)
 
-    def __init__(self, platform, mac_address=0x10e2d5000000, ip_address="192.168.1.50"):
-        BaseSoC.__init__(self, platform, cpu_type=None, csr_data_width=8, l2_size=32)
+    def __init__(self, platform, mac_address=0x10e2d5000004, ip_address="10.0.11.2"):
+        BaseSoC.__init__(self, platform, cpu_type="vexriscv", cpu_variant="debug", csr_data_width=8, l2_size=32)
 
         # ethernet mac/udp/ip stack
         self.submodules.ethphy = LiteEthPHYMII(self.platform.request("eth_clocks"),
@@ -300,9 +273,12 @@ class EtherboneSoC(BaseSoC):
                                                    self.clk_freq,
                                                    with_icmp=True)
 
+        # vexriscv debugging, at offset 0xf00f0000
+        self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu_or_bridge.debug_bus, 0x10)
+
         # etherbone bridge
-        self.add_cpu_or_bridge(LiteEthEtherbone(self.ethcore.udp, 1234))
-        self.add_wb_master(self.cpu_or_bridge.wishbone.bus)
+        # self.add_cpu_or_bridge(LiteEthEtherbone(self.ethcore.udp, 1234))
+        # self.add_wb_master(self.cpu_or_bridge.wishbone.bus)
 
         self.ethphy.crg.cd_eth_rx.clk.attr.add("keep")
         self.ethphy.crg.cd_eth_tx.clk.attr.add("keep")
