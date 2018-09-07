@@ -8,9 +8,8 @@ import os
 # directory.  Obtain the current path so we can get the absolute parent path.
 script_path = os.path.dirname(os.path.realpath(
     __file__)) + os.path.sep + os.path.pardir + os.path.sep
-sys.path.insert(0, script_path)it
+sys.path.insert(0, script_path)
 import lxbuildenv
 
 from litex.soc.tools.mkmscimg import main
-main()from litex.soc.tools.mkmscimg import main
 main()
