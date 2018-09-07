@@ -7,7 +7,7 @@ LX_DEPENDENCIES = ["vivado", "riscv"]
 import argparse
 import os
 
-from migen import ClockDomain, Signal, Instance, Module, ClockSignal, If
+from migen import ClockDomain, Signal, Instance, Module, ClockSignal, If, ResetSignal
 from migen.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.boards.platforms import arty, arty_s7
@@ -276,9 +276,15 @@ class EtherboneSoC(BaseSoC):
         # vexriscv debugging, at offset 0xf00f0000
         self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu_or_bridge.debug_bus, 0x10)
 
-        # etherbone bridge
-        # self.add_cpu_or_bridge(LiteEthEtherbone(self.ethcore.udp, 1234))
-        # self.add_wb_master(self.cpu_or_bridge.wishbone.bus)
+        # Hook Etherbone up to the Wishbone bus, providing Wishbone over Ethernet.
+        etherbone_cd = ClockDomain("etherbone")
+        self.clock_domains += etherbone_cd
+        self.comb += [
+            etherbone_cd.clk.eq(ClockSignal("sys")),
+            etherbone_cd.rst.eq(ResetSignal("sys"))
+        ]
+        self.submodules.etherbone = LiteEthEtherbone(self.ethcore.udp, 1234, mode="master", cd="etherbone")
+        self.add_wb_master(self.etherbone.wishbone.bus)
 
         self.ethphy.crg.cd_eth_rx.clk.attr.add("keep")
         self.ethphy.crg.cd_eth_tx.clk.attr.add("keep")
