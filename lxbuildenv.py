@@ -277,11 +277,10 @@ import os
 # directory.  Obtain the current path so we can get the absolute parent path.
 script_path = os.path.dirname(os.path.realpath(
     __file__)) + os.path.sep + os.path.pardir + os.path.sep
-sys.path.insert(0, script_path)it
+sys.path.insert(0, script_path)
 import lxbuildenv
 
-from litex.soc.tools.mkmscimg import main
-main()"""
+"""
         # Create binary programs under bin/
         if not os.path.exists("bin"):
             print("Creating binaries")
@@ -303,6 +302,9 @@ LX_DEPENDENCIES = ["riscv", "vivado"]
 
 # Import lxbuildenv to integrate the deps/ directory
 import lxbuildenv
+
+# Disable pylint's E1101, which breaks completely on migen
+#pylint:disable=E1101
 
 from migen import *
 from litex.build.generic_platform import *
